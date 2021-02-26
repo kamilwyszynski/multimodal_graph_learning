@@ -57,7 +57,7 @@ class HetGraph():
             img_sim = self.img2vec.get_cos_sim(saved_img_vec, img_vec)
             
             # add similarity as an edge attr
-            self.edge_attr_w2w = torch.cat((self.edge_attr_w2w, img_sim.unsqueeze(0), img_sim.unsqueeze(0))) # adding two times because directional
+            self.edge_attr_i2i = torch.cat((self.edge_attr_i2i, img_sim.unsqueeze(0), img_sim.unsqueeze(0))) # adding two times because directional
 
             # add edge between image nodes (both directions)
             edg1 = torch.Tensor([node_index, num_nodes])
@@ -106,9 +106,17 @@ class HetGraph():
                 # need to reshape before cat for later usage
                 self.x_wrd = torch.cat((self.x_wrd, torch.from_numpy(word_vec.reshape(1, 300))))
 
-                # add word to image edges (not directional)
+                # add new word to image edges (not directional)
                 img_idx = num_nodes
                 wrd_idx = num_words
+                edg = torch.Tensor([img_idx, wrd_idx])
+                self.edge_index_i2w = torch.cat((self.edge_index_i2w, edg.unsqueeze(0))).int()
+            
+            elif word in self.y_wrd:
+
+                # add existing word to image edges (not directional)
+                img_idx = num_nodes
+                wrd_idx = self.y_wrd.index(word)
                 edg = torch.Tensor([img_idx, wrd_idx])
                 self.edge_index_i2w = torch.cat((self.edge_index_i2w, edg.unsqueeze(0))).int()
 
