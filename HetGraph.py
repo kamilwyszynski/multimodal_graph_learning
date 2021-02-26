@@ -44,6 +44,23 @@ class HetGraph():
         with open(english_stopwords_path, 'r') as file:
             self.stopwords = file.read().split('\n')
 
+    def get_details(self):
+        #feature sets for images and words
+        print(hg.x_img)
+        print(hg.x_wrd)
+
+        # lists of words and image file names for later tracing
+        print(hg.y_img)
+        print(hg.y_wrd)
+
+        # edges between all types of nodes
+        # print(hg.edge_index_i2i)
+        # print(hg.edge_index_w2w)
+        print(hg.edge_index_i2w)
+
+        # edge weights
+        print(hg.edge_attr_i2i)
+        print(hg.edge_attr_w2w)        
 
     def add_node(self, img, cap, img_name):
         # calculate image vector
