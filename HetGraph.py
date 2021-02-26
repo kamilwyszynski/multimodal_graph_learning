@@ -147,5 +147,21 @@ class HetGraph():
 
         return torch.Tensor(edges).int()
 
-    # def get_data_object(self):
-    #     return Data()
+    def get_data_object(self):
+        # feature sets
+        x_img = self.x_img
+        x_wrd = self.x_wrd
+
+        # edges need transposing
+        edge_index_i2i = self.edge_index_i2i.t().contiguous()
+        edge_index_w2w = self.edge_index_w2w.t().contiguous()
+        edge_index_i2w = self.edge_index_i2w.t().contiguous()
+
+        # edge weights
+        edge_attr_i2i = self.edge_attr_i2i
+        edge_attr_w2w = self.edge_attr_w2w
+
+        # creating the object
+        data = Data(x_img, x_wrd, edge_index_i2i, edge_index_w2w, edge_index_i2w, edge_attr_i2i, edge_attr_w2w)
+
+        return data

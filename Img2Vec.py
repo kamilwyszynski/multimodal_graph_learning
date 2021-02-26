@@ -11,6 +11,8 @@ import numpy as np
 class Img2Vec():
 
     def __init__(self):
+        # TODO: load the pre-trained model if already downloaded
+
         # Load the pretrained model
         self.model = models.resnet18(pretrained=True)
         # Use the model object to select the desired layer
