@@ -5,4 +5,4 @@
 /res/*
 /venv/*
 /testing.py
-/graphDeploymentTest.py
+/graph_deployment_test.py
