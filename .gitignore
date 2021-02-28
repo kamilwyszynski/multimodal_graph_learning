@@ -4,5 +4,3 @@
 /models/*
 /res/*
 /venv/*
-/testing.py
-/graph_deployment_test.py

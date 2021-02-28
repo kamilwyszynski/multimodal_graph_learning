@@ -1,6 +1,12 @@
-import torch
-from torch_geometric.data import Data
+import itertools
+import os
+import pickle as pkl
 import numpy as np
+import json
+import pandas as pd
+
+import torch
+from torch_geometric.data import Data, DataLoader
 
 from img2vec import Img2Vec
 from dataset import VizWiz
@@ -8,14 +14,9 @@ from dataset import VizWiz
 import gensim.downloader as gensim_api
 from gensim.models import KeyedVectors
 
-import itertools
-import os
-import pickle as pkl
-
-from torch_geometric.data import DataLoader
-
 import networkx as nx
 from stellargraph import StellarGraph
+from stellargraph.data import EdgeSplitter
 
 class HetGraph():
 
@@ -116,21 +117,6 @@ class HetGraph():
             edges.append(list(reversed(edge)))
 
         return torch.Tensor(edges).int()
-
-    def get_data_object(self):
-        x_img = self.x_img
-        x_wrd = self.x_wrd
-        edge_index_img = self.edge_index_img.t().contiguous()
-        edge_index_wrd = self.edge_index_wrd.t().contiguous()
-        edge_index_i2w = self.edge_index_i2w.t().contiguous()
-        edge_attr_img = self.edge_attr_img
-        edge_attr_wrd = self.edge_attr_wrd
- 
-        data = HetData(x_img=x_img, x_wrd=x_wrd, edge_index_img=edge_index_img,
-                       edge_index_wrd=edge_index_wrd, edge_index_i2w=edge_index_i2w,
-                       edge_attr_img=edge_attr_img, edge_attr_wrd=edge_attr_wrd)
-
-        return data
     
     def load_viz_wiz(self, num_img):
         vz = VizWiz()
@@ -150,9 +136,25 @@ class HetGraph():
 
             img_loaded += 1
 
+    def get_pyg_graph(self):
+        x_img = self.x_img
+        x_wrd = self.x_wrd
+        edge_index_img = self.edge_index_img.t().contiguous()
+        edge_index_wrd = self.edge_index_wrd.t().contiguous()
+        edge_index_i2w = self.edge_index_i2w.t().contiguous()
+        edge_attr_img = self.edge_attr_img
+        edge_attr_wrd = self.edge_attr_wrd
+ 
+        data = HetData(x_img=x_img, x_wrd=x_wrd, edge_index_img=edge_index_img,
+                       edge_index_wrd=edge_index_wrd, edge_index_i2w=edge_index_i2w,
+                       edge_attr_img=edge_attr_img, edge_attr_wrd=edge_attr_wrd)
+
+        return data
+
     def get_stellar_graph(self):
         g = nx.Graph()
 
+        # image nodes
         for edge, sim in zip(self.edge_index_img[1::2], self.edge_attr_img[1::2]):
             node1 = self.y_img[int(edge[0])][0]
             node2 = self.y_img[int(edge[1])][0]
@@ -168,10 +170,10 @@ class HetGraph():
             g.nodes[node1]['feature'] = feature1
             g.nodes[node2]['feature'] = feature2
 
-
+        # word nodes
         for edge, sim in zip(self.edge_index_wrd[1::2], self.edge_attr_wrd[1::2]):
-            node1 = self.y_wrd[int(edge[0])][0]
-            node2 = self.y_wrd[int(edge[1])][0]
+            node1 = self.y_wrd[int(edge[0])]
+            node2 = self.y_wrd[int(edge[1])]
 
             feature1 = self.x_wrd[int(edge[0])].numpy()
             feature2 = self.x_wrd[int(edge[1])].numpy()
@@ -184,10 +186,10 @@ class HetGraph():
             g.nodes[node1]['feature'] = feature1
             g.nodes[node2]['feature'] = feature2
 
-        
+        # inter class edges
         for edge in self.edge_index_i2w:
             node1 = self.y_img[int(edge[0])][0]
-            node2 = self.y_wrd[int(edge[1])][0]
+            node2 = self.y_wrd[int(edge[1])]
 
             g.add_edge(node1, node2, label='image2word')
         
@@ -196,7 +198,7 @@ class HetGraph():
     def save(self, path):
         pkl.dump(self, open(path, 'wb'))
 
-    def load(path):
+    def load(self, path):
         self = pkl.load(open(path, 'rb'))
 
 class HetData(Data):
@@ -218,3 +220,19 @@ class HetData(Data):
             return self.x_wrd.size(0)
         else:
             return super().__inc__(key, value)
+
+def stellar_split(g, p=0.1, train=0.75):
+    edge_splitter_test = EdgeSplitter(data)
+
+    # Randomly sample a fraction p=0.1 of all positive links, and same number of negative links, from graph, and obtain the
+    # reduced graph graph_test with the sampled links removed:
+    graph_test, edges_test, labels_test = edge_splitter_test.train_test_split(
+        p=p method="global", edge_label='image2word'
+    )
+
+    (
+        edges_train,
+        edges_test,
+        labels_train,
+        labels_test,
+    ) = train_test_split(edges, labels, train_size=train, test_size=1-train)
