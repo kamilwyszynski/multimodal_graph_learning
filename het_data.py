@@ -220,19 +220,3 @@ class HetData(Data):
             return self.x_wrd.size(0)
         else:
             return super().__inc__(key, value)
-
-def stellar_split(g, p=0.1, train=0.75):
-    edge_splitter_test = EdgeSplitter(data)
-
-    # Randomly sample a fraction p=0.1 of all positive links, and same number of negative links, from graph, and obtain the
-    # reduced graph graph_test with the sampled links removed:
-    graph_test, edges_test, labels_test = edge_splitter_test.train_test_split(
-        p=p method="global", edge_label='image2word'
-    )
-
-    (
-        edges_train,
-        edges_test,
-        labels_train,
-        labels_test,
-    ) = train_test_split(edges, labels, train_size=train, test_size=1-train)
