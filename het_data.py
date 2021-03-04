@@ -52,7 +52,7 @@ class HetGraph():
         print(hg.edge_attr_img)
         print(hg.edge_attr_wrd)        
 
-    # TODO: cleanup the process
+    # TODO: cleanup the process. Also find a way of adding the nodes without using cat function (maybe use np arrays instead)
     def add_node(self, img, cap, img_name):
         img_vec = self.img2vec.get_vector(img) # calculate image vector
         num_nodes = self.x_img.size()[0] # get number of nodes
@@ -150,6 +150,8 @@ class HetGraph():
                        edge_attr_img=edge_attr_img, edge_attr_wrd=edge_attr_wrd)
 
         return data
+
+    # TODO: find a way to construct the graph by passing arrays instead of iterating trough them
 
     def get_stellar_graph(self):
         g = nx.Graph()

@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn import model_selection
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score, binary_accuracy
 from sklearn.model_selection import train_test_split
 
 import tensorflow.keras.backend as K
@@ -34,12 +34,13 @@ def split_graph(g, p_test=0.1, p_train=0.1):
 
     return edges_train, edges_test, labels_train, labels_test
 
+# TODO: For some rason, the edge switches from img -> wrd to wrd -> img from time to time
 def get_hinsage_generators(g, edges_train, edges_test, labels_train, labels_test,
                            batch_size=20, num_samples=[8,4]):
 
     # TODO: explain what exactly is the num_samples for
     generator = HinSAGELinkGenerator(
-        g, batch_size, num_samples, head_node_types=["word", "image"]
+        g, batch_size, num_samples, head_node_types=["image", "word"]
     )
 
     train_gen = generator.flow(edges_train, labels_train, shuffle=True)
@@ -47,6 +48,8 @@ def get_hinsage_generators(g, edges_train, edges_test, labels_train, labels_test
 
     return generator, train_gen, test_gen
 
+# TODO: add one-hot encoding layer
+# TODO: use cross entropy loss for training
 def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage_layer_sizes=[32, 32], bias=True, dropout=0.0):
 
     assert len(hinsage_layer_sizes) == len(num_samples)
@@ -59,8 +62,7 @@ def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage
     x_inp, x_out = hinsage.in_out_tensors()
 
     # Final estimator layer
-    # TODO: change to link_classifier
-    score_prediction = link_regression(edge_embedding_method="concat")(x_out)
+    score_prediction = link_classification(output_dim=1, output_act='sigmoid', edge_embedding_method='concat')(x_out)
 
     def root_mean_square_error(s_true, s_pred):
         return K.sqrt(K.mean(K.pow(s_true - s_pred, 2)))
@@ -69,11 +71,14 @@ def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage
     model = Model(inputs=x_inp, outputs=score_prediction)
     model.compile(
         optimizer=optimizers.Adam(lr=1e-2),
-        loss=losses.mean_squared_error,
-        metrics=[root_mean_square_error, metrics.mae],
+        # loss=losses.mean_squared_error,
+        loss=losses.binary_crossentropy,
+        metrics=[binary_accuracy],
+        # metrics=[root_mean_square_error, metrics.mae, binary_accuracy],
     )
 
     return model
+
 
 def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, epochs=20):
 
@@ -95,6 +100,8 @@ def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, e
         workers=num_workers,
     )
 
+    plot_history(history)
+
     test_metrics = model.evaluate(
         test_gen, use_multiprocessing=False, workers=num_workers, verbose=1
     )
@@ -111,15 +118,19 @@ def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, e
 
     rmse = np.sqrt(mean_squared_error(y_true, y_pred_baseline))
     mae = mean_absolute_error(y_true, y_pred_baseline)
+    acc = accuracy_score(y_true, y_pred_baseline)
     print("Mean Baseline Test set metrics:")
     print("\troot_mean_square_error = ", rmse)
     print("\tmean_absolute_error = ", mae)
+    print("\taccuracy = ", acc)
 
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
+    acc = accuracy_score(y_true, y_pred)
     print("\nModel Test set metrics:")
     print("\troot_mean_square_error = ", rmse)
     print("\tmean_absolute_error = ", mae)
+    print("\taccuracy = ", acc)
 
     h_true = plt.hist(y_true, bins=30, facecolor="green", alpha=0.5)
     h_pred = plt.hist(y_pred, bins=30, facecolor="blue", alpha=0.5)
@@ -127,3 +138,15 @@ def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, e
     plt.ylabel("count")
     plt.legend(("True", "Predicted"))
     plt.show()
+
+def plot_history(history):
+        metrics = sorted(history.history.keys())
+        metrics = metrics[:len(metrics)//2]
+        for m in metrics:        
+            plt.plot(history.history[m])
+            plt.plot(history.history['val_' + m])
+            plt.title(m)
+            plt.ylabel(m)
+            plt.xlabel('epoch')
+            plt.legend(['train', 'test'], loc='upper right')
+            plt.show()
