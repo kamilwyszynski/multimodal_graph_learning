@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn import model_selection
-from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score, binary_accuracy
+from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score
 from sklearn.model_selection import train_test_split
 
 import tensorflow.keras.backend as K
@@ -24,8 +24,8 @@ def split_graph(g, p_test=0.1, p_train=0.1):
         p=p_test, method="global", edge_label='image2word'
     )
 
-    # TRAIN
-    edge_splitter_train = EdgeSplitter(g_test)
+    # TRAIN 
+    edge_splitter_train = EdgeSplitter(g_test, g)
 
     # Sampling for the second time for train to eliminate overlap with test:
     g_train, edges_train, labels_train = edge_splitter_train.train_test_split(
@@ -48,9 +48,7 @@ def get_hinsage_generators(g, edges_train, edges_test, labels_train, labels_test
 
     return generator, train_gen, test_gen
 
-# TODO: add one-hot encoding layer
-# TODO: use cross entropy loss for training
-def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage_layer_sizes=[32, 32], bias=True, dropout=0.0):
+def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage_layer_sizes=[32, 32], bias=True, dropout=0.0, lr=1e-2, edge_embedding_method='concat'):
 
     assert len(hinsage_layer_sizes) == len(num_samples)
 
@@ -62,7 +60,7 @@ def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage
     x_inp, x_out = hinsage.in_out_tensors()
 
     # Final estimator layer
-    score_prediction = link_classification(output_dim=1, output_act='sigmoid', edge_embedding_method='concat')(x_out)
+    score_prediction = link_classification(output_dim=1, output_act='sigmoid', edge_embedding_method=edge_embedding_method)(x_out)
 
     def root_mean_square_error(s_true, s_pred):
         return K.sqrt(K.mean(K.pow(s_true - s_pred, 2)))
@@ -70,11 +68,11 @@ def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage
 
     model = Model(inputs=x_inp, outputs=score_prediction)
     model.compile(
-        optimizer=optimizers.Adam(lr=1e-2),
+        optimizer=optimizers.Adam(lr=lr),
         # loss=losses.mean_squared_error,
         loss=losses.binary_crossentropy,
-        metrics=[binary_accuracy],
-        # metrics=[root_mean_square_error, metrics.mae, binary_accuracy],
+        metrics=[metrics.binary_accuracy],
+        # metrics=[root_mean_square_error, metrics.mae, 'acc'],
     )
 
     return model
@@ -118,19 +116,19 @@ def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, e
 
     rmse = np.sqrt(mean_squared_error(y_true, y_pred_baseline))
     mae = mean_absolute_error(y_true, y_pred_baseline)
-    acc = accuracy_score(y_true, y_pred_baseline)
+    # acc = binary_accuracy(y_true, y_pred_baseline)
     print("Mean Baseline Test set metrics:")
     print("\troot_mean_square_error = ", rmse)
     print("\tmean_absolute_error = ", mae)
-    print("\taccuracy = ", acc)
+    # print("\taccuracy = ", acc)
 
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
-    acc = accuracy_score(y_true, y_pred)
+    # acc = binary_accuracy(y_true, y_pred)
     print("\nModel Test set metrics:")
     print("\troot_mean_square_error = ", rmse)
     print("\tmean_absolute_error = ", mae)
-    print("\taccuracy = ", acc)
+    # print("\taccuracy = ", acc)
 
     h_true = plt.hist(y_true, bins=30, facecolor="green", alpha=0.5)
     h_pred = plt.hist(y_pred, bins=30, facecolor="blue", alpha=0.5)
