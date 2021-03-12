@@ -21,6 +21,8 @@ from stellargraph.data import EdgeSplitter
 class HetGraph():
 
     def __init__(self, english_stopwords_path='res/stopwords/english', word2vec_path='models/word2vec.model'):
+        self.g = nx.Graph()
+
         self.x_img = torch.Tensor()
         self.x_wrd = torch.Tensor()
         self.y_img = []
@@ -52,23 +54,18 @@ class HetGraph():
         print(hg.edge_attr_img)
         print(hg.edge_attr_wrd)        
 
-    # TODO: cleanup the process. Also find a way of adding the nodes without using cat function (maybe use np arrays instead)
+    # TODO: Change the process to directly build a networkx
     def add_node(self, img, cap, img_name):
-        img_vec = self.img2vec.get_vector(img) # calculate image vector
+        img_vec = self.img2vec.get_vector(img).numpy() # calculate image vector
         num_nodes = self.x_img.size()[0] # get number of nodes
 
-        for node_index, saved_img_vec in enumerate(self.x_img):
-            img_sim = self.img2vec.get_cos_sim(saved_img_vec, img_vec) # calculate cos similarity between all saved vectors
-            self.edge_attr_img = torch.cat((self.edge_attr_img, img_sim.unsqueeze(0), img_sim.unsqueeze(0))) # adding two times because directional
+        # add image node and its vector as its feature
+        self.g.add_node(img_name, label='image', feature=img_vec)   
+        self.y_img.append(img_name) # Adding for easier iteration
 
-            # add edge between image nodes (both directions)
-            edg1 = torch.Tensor([node_index, num_nodes])
-            edg2 = torch.Tensor([num_nodes, node_index])
-            self.edge_index_img = torch.cat((self.edge_index_img, edg1.unsqueeze(0), edg2.unsqueeze(0)))
-
-        # add image node and image caption as its label
-        self.x_img = torch.cat((self.x_img, img_vec.reshape(1, 512)))
-        self.y_img.append([img_name, cap])
+        for node in self.y_img[:-1]:
+            img_sim = self.img2vec.get_cos_sim_np(self.g.nodes[node]['feature'], img_vec) # calculate cos similarity between all saved vectors
+            self.g.add_edge(node, img_name, weight=float(img_sim), label='image2image')
 
         for word in cap.split():
             word = word.lower()
@@ -77,37 +74,18 @@ class HetGraph():
                 continue # skip if a stopword
 
             if word not in self.y_wrd:
-                self.y_wrd.append(word)
-
                 word_vec = self.word2vec.get_vector(word) # calculate word vector
 
-                num_words = self.x_wrd.size()[0] # number of words without the new word
+                self.g.add_node(word, label='word', feature=word_vec) 
+                self.y_wrd.append(word)
 
-                if num_words > 0:
-                    word_sims = self.word2vec.cosine_similarities(word_vec, self.x_wrd.numpy())
+                for node in self.y_wrd[:-1]:
+                    # TODO: calculate sim directly from vecs
+                    wrd_sim = self.word2vec.similarity(node, word) # calculate cos similarity between all saved vectors
+                    self.g.add_edge(node, word, weight=float(wrd_sim), label='word2word')
 
-                    # repeating each similarity to reflect two-directional edges
-                    self.edge_attr_wrd = torch.cat((self.edge_attr_wrd, torch.from_numpy(np.repeat(word_sims, 2))))
-
-                    edge_indices = self.generate_edges(num_words)
-                    self.edge_index_wrd = torch.cat((self.edge_index_wrd, edge_indices))
-
-                # need to reshape before cat for later usage
-                self.x_wrd = torch.cat((self.x_wrd, torch.from_numpy(word_vec.reshape(1, 300))))
-
-                # add new word to image edges (not directional)
-                img_idx = num_nodes
-                wrd_idx = num_words
-                edg = torch.Tensor([img_idx, wrd_idx])
-                self.edge_index_i2w = torch.cat((self.edge_index_i2w, edg.unsqueeze(0))).int()
-            
-            elif word in self.y_wrd:
-
-                # add existing word to image edges (not directional)
-                img_idx = num_nodes
-                wrd_idx = self.y_wrd.index(word)
-                edg = torch.Tensor([img_idx, wrd_idx])
-                self.edge_index_i2w = torch.cat((self.edge_index_i2w, edg.unsqueeze(0))).int()
+            # add word to image edges (not directional)
+            self.g.add_edge(img_name, word, label='image2word')
 
     def generate_edges(self, new_node):
         edges = []
@@ -118,8 +96,8 @@ class HetGraph():
 
         return torch.Tensor(edges).int()
     
-    def load_viz_wiz(self, num_img):
-        vz = VizWiz()
+    def load_viz_wiz(self, num_img, offset=0):
+        vz = VizWiz(offset=offset)
         img_loaded = 0
 
         while img_loaded is not None and img_loaded < num_img:
@@ -154,48 +132,7 @@ class HetGraph():
     # TODO: find a way to construct the graph by passing arrays instead of iterating trough them
 
     def get_stellar_graph(self):
-        g = nx.Graph()
-
-        # image nodes
-        for edge, sim in zip(self.edge_index_img[1::2], self.edge_attr_img[1::2]):
-            node1 = self.y_img[int(edge[0])][0]
-            node2 = self.y_img[int(edge[1])][0]
-
-            feature1 = self.x_img[int(edge[0])].numpy()
-            feature2 = self.x_img[int(edge[1])].numpy()
-
-            g.add_edge(node1, node2, weight=float(sim), label='image2image')
-
-            g.nodes[node1]['label'] = 'image'
-            g.nodes[node2]['label'] = 'image'
-
-            g.nodes[node1]['feature'] = feature1
-            g.nodes[node2]['feature'] = feature2
-
-        # word nodes
-        for edge, sim in zip(self.edge_index_wrd[1::2], self.edge_attr_wrd[1::2]):
-            node1 = self.y_wrd[int(edge[0])]
-            node2 = self.y_wrd[int(edge[1])]
-
-            feature1 = self.x_wrd[int(edge[0])].numpy()
-            feature2 = self.x_wrd[int(edge[1])].numpy()
-
-            g.add_edge(node1, node2, weight=float(sim), label='word2word')
-
-            g.nodes[node1]['label'] = 'word'
-            g.nodes[node2]['label'] = 'word'
-
-            g.nodes[node1]['feature'] = feature1
-            g.nodes[node2]['feature'] = feature2
-
-        # inter class edges
-        for edge in self.edge_index_i2w:
-            node1 = self.y_img[int(edge[0])][0]
-            node2 = self.y_wrd[int(edge[1])]
-
-            g.add_edge(node1, node2, label='image2word')
-        
-        return StellarGraph.from_networkx(g, node_features='feature')
+        return StellarGraph.from_networkx(self.g, node_features='feature')
 
     def save(self, path):
         pkl.dump(self, open(path, 'wb'))
