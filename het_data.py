@@ -55,7 +55,7 @@ class HetGraph():
         print(hg.edge_attr_wrd)        
 
     # TODO: Change the process to directly build a networkx
-    def add_node(self, img, cap, img_name):
+    def add_node(self, img, cap, img_name, fully_connected=True, image_threshold=0.6, word_threshold=0.6):
         img_vec = self.img2vec.get_vector(img).numpy() # calculate image vector
         num_nodes = self.x_img.size()[0] # get number of nodes
 
@@ -65,10 +65,17 @@ class HetGraph():
 
         for node in self.y_img[:-1]:
             img_sim = self.img2vec.get_cos_sim_np(self.g.nodes[node]['feature'], img_vec) # calculate cos similarity between all saved vectors
-            self.g.add_edge(node, img_name, weight=float(img_sim), label='image2image')
 
-        for word in cap.split():
+            if fully_connected or float(img_sim) > image_threshold:
+                self.g.add_edge(node, img_name, weight=float(img_sim), label='image2image')
+
+
+        for word in list(set(cap.split())):
             word = word.lower()
+
+            to_remove = ['.', ',', '(', ')']
+            for r in to_remove:
+                word = word.replace(r, '')
 
             if (word in self.stopwords) or (word not in self.word2vec.vocab.keys()):
                 continue # skip if a stopword
@@ -82,7 +89,9 @@ class HetGraph():
                 for node in self.y_wrd[:-1]:
                     # TODO: calculate sim directly from vecs
                     wrd_sim = self.word2vec.similarity(node, word) # calculate cos similarity between all saved vectors
-                    self.g.add_edge(node, word, weight=float(wrd_sim), label='word2word')
+
+                    if fully_connected or float(wrd_sim) > word_threshold:
+                        self.g.add_edge(node, word, weight=float(wrd_sim), label='word2word')
 
             # add word to image edges (not directional)
             self.g.add_edge(img_name, word, label='image2word')
@@ -96,7 +105,7 @@ class HetGraph():
 
         return torch.Tensor(edges).int()
     
-    def load_viz_wiz(self, num_img, offset=0):
+    def load_viz_wiz(self, num_img, offset=0, fully_connected=True, image_threshold=0.6, word_threshold=0.6):
         vz = VizWiz(offset=offset)
         img_loaded = 0
 
@@ -109,7 +118,7 @@ class HetGraph():
 
             print(f'Image caption: {c}')
 
-            self.add_node(i, c, n)
+            self.add_node(i, c, n, fully_connected=fully_connected, image_threshold=image_threshold, word_threshold=word_threshold)
             print(f'Added {img_loaded+1} images.')
 
             img_loaded += 1
