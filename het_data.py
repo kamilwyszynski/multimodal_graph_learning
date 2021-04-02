@@ -73,7 +73,7 @@ class HetGraph():
         for word in list(set(cap.split())):
             word = word.lower()
 
-            to_remove = ['.', ',', '(', ')']
+            to_remove = ['.', ',', '(', ')', '=']
             for r in to_remove:
                 word = word.replace(r, '')
 
@@ -113,7 +113,7 @@ class HetGraph():
             # image, caption, image filename
             i, c, n = vz.__next__()
             
-            if c == 'Quality issues are too severe to recognize visual content.':
+            if 'Quality issues are too severe to recognize visual content' in c:
                 continue # skip too noisy images
 
             print(f'Image caption: {c}')
