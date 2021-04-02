@@ -7,6 +7,7 @@ from torch.autograd import Variable
 from PIL import Image
 from matplotlib.pyplot import imshow
 import numpy as np
+from scipy import spatial
 
 class Img2Vec():
 
@@ -54,3 +55,10 @@ class Img2Vec():
         cos_sim = cos(vec1.unsqueeze(0), vec2.unsqueeze(0))
 
         return cos_sim[0]
+
+    def get_cos_sim_np(self, vec1, vec2):
+        # Using SciPy Cosine Similarity
+        cos_dis = spatial.distance.cosine(vec1, vec2)
+        cos_sim = 1 - cos_dis
+
+        return cos_sim

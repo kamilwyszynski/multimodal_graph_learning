@@ -3,6 +3,7 @@ from sklearn import model_selection
 from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score
 from sklearn.model_selection import train_test_split
 
+import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import Model, optimizers, losses, metrics
 
@@ -32,23 +33,28 @@ def split_graph(g, p_test=0.1, p_train=0.1):
         p=p_train, method="global", edge_label='image2word'
     )
 
-    return edges_train, edges_test, labels_train, labels_test
+    return edges_train, edges_test, labels_train, labels_test, g_train, g_test
 
 # TODO: For some rason, the edge switches from img -> wrd to wrd -> img from time to time
-def get_hinsage_generators(g, edges_train, edges_test, labels_train, labels_test,
-                           batch_size=20, num_samples=[8,4]):
+def get_hinsage_generators(g_train, g_test, edges_train, edges_test, labels_train, labels_test,
+                           batch_size=20, num_samples=[8,4], shuffle=True, head_node_types=["image", "word"]):
 
-    # TODO: explain what exactly is the num_samples for
-    generator = HinSAGELinkGenerator(
-        g, batch_size, num_samples, head_node_types=["image", "word"]
+    generator_train = HinSAGELinkGenerator(
+        g_train, batch_size, num_samples, head_node_types=head_node_types
     )
 
-    train_gen = generator.flow(edges_train, labels_train, shuffle=True)
-    test_gen = generator.flow(edges_test, labels_test)
+    train_gen = generator_train.flow(edges_train, labels_train, shuffle=shuffle)
 
-    return generator, train_gen, test_gen
 
-def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage_layer_sizes=[32, 32], bias=True, dropout=0.0, lr=1e-2, edge_embedding_method='concat'):
+    generator_test = HinSAGELinkGenerator(
+        g_test, batch_size, num_samples, head_node_types=head_node_types
+    )
+
+    test_gen = generator_test.flow(edges_test, labels_test)
+
+    return generator_train, generator_test, train_gen, test_gen
+
+def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage_layer_sizes=[32, 32], bias=True, dropout=0.0, lr=1e-2, edge_embedding_method='concat', output_act='sigmoid'):
 
     assert len(hinsage_layer_sizes) == len(num_samples)
 
@@ -65,23 +71,43 @@ def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage
     def root_mean_square_error(s_true, s_pred):
         return K.sqrt(K.mean(K.pow(s_true - s_pred, 2)))
 
+    def recall_m(y_true, y_pred):
+        y_pred = tf.where(y_pred > 0.5, 1.0, 0.0)
+        true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+        possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
+        recall = true_positives / (possible_positives + K.epsilon())
+        return recall
+
+    def precision_m(y_true, y_pred):
+        y_pred = tf.where(y_pred > 0.5, 1.0, 0.0)
+        true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+        predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
+        precision = true_positives / (predicted_positives + K.epsilon())
+        return precision
+
+    def f1_m(y_true, y_pred):
+        y_pred = tf.where(y_pred > 0.5, 1.0, 0.0)
+        precision = precision_m(y_true, y_pred)
+        recall = recall_m(y_true, y_pred)
+        return 2*((precision*recall)/(precision+recall+K.epsilon()))
+
 
     model = Model(inputs=x_inp, outputs=score_prediction)
     model.compile(
         optimizer=optimizers.Adam(lr=lr),
         # loss=losses.mean_squared_error,
         loss=losses.binary_crossentropy,
-        metrics=[metrics.binary_accuracy],
+        metrics=[metrics.binary_accuracy, metrics.Precision(), metrics.Recall()],
         # metrics=[root_mean_square_error, metrics.mae, 'acc'],
     )
 
     return model
 
 
-def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, epochs=20):
+def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, epochs=20, verbose=1, shuffle=False):
 
     test_metrics = model.evaluate(
-        test_gen, verbose=1, use_multiprocessing=False, workers=num_workers
+        test_gen, verbose=verbose, use_multiprocessing=False, workers=num_workers
     )
 
     print("Untrained model's Test Evaluation:")
@@ -92,8 +118,8 @@ def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, e
         train_gen,
         validation_data=test_gen,
         epochs=epochs,
-        verbose=1,
-        shuffle=False,
+        verbose=verbose,
+        shuffle=shuffle,
         use_multiprocessing=False,
         workers=num_workers,
     )
