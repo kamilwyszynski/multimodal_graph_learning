@@ -29,4 +29,6 @@ class VizWiz():
 
     def get_caption(self, image):
         img_id = int(image[13:-4])
-        return self.annotations['annotations'][img_id]['caption']
+
+        captions = [self.annotations['annotations'][img_id*5+i]['caption'] for i in range(5)]
+        return captions
