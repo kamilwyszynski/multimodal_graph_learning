@@ -97,7 +97,7 @@ def get_hinsage_model(generator, train_gen, test_gen, num_samples=[8,4], hinsage
         optimizer=optimizers.Adam(lr=lr),
         # loss=losses.mean_squared_error,
         loss=losses.binary_crossentropy,
-        metrics=[metrics.binary_accuracy, recall_m, precision_m, f1_m],
+        metrics=[metrics.binary_accuracy, metrics.Precision(), metrics.Recall()],
         # metrics=[root_mean_square_error, metrics.mae, 'acc'],
     )
 
@@ -156,8 +156,8 @@ def perform(model, generator, train_gen, test_gen, labels_test, num_workers=4, e
     print("\tmean_absolute_error = ", mae)
     # print("\taccuracy = ", acc)
 
-    h_true = plt.hist(y_true, bins=2, facecolor="green", alpha=0.5)
-    h_pred = plt.hist(y_pred, bins=2, facecolor="blue", alpha=0.5)
+    h_true = plt.hist(y_true, bins=30, facecolor="green", alpha=0.5)
+    h_pred = plt.hist(y_pred, bins=30, facecolor="blue", alpha=0.5)
     plt.xlabel("ranking")
     plt.ylabel("count")
     plt.legend(("True", "Predicted"))
